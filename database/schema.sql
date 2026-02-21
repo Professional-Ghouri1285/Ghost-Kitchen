@@ -163,26 +163,25 @@ FOR EACH ROW
 EXECUTE FUNCTION check_brand_inventory_allocation();
 
 
-CREATE OR REPLACE FUNCTION disable_menu_items_if_out_of_stock()
+CREATE OR REPLACE FUNCTION enforce_order_status_transition()
 RETURNS TRIGGER AS $$
 BEGIN
-    IF NEW.total_quantity = 0 THEN
-        UPDATE MenuItems
-        SET is_available = FALSE
-        WHERE item_id IN (
-            SELECT mi.item_id
-            FROM MenuItems mi
-        );
+    IF OLD.order_status IN ('DELIVERED', 'CANCELLED') THEN
+        RAISE EXCEPTION 'Cannot modify order once it is DELIVERED or CANCELLED';
+    END IF;
+
+    IF OLD.order_status = 'PLACED'
+       AND NEW.order_status NOT IN ('DELIVERED', 'CANCELLED') THEN
+        RAISE EXCEPTION 'Invalid order status transition';
     END IF;
 
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_disable_menu_items
-AFTER UPDATE ON Inventory
+CREATE TRIGGER trg_enforce_order_status_transition
+BEFORE UPDATE ON Orders
 FOR EACH ROW
-EXECUTE FUNCTION disable_menu_items_if_out_of_stock();
+EXECUTE FUNCTION enforce_order_status_transition();
 
 CREATE VIEW brand_sales_summary AS
 SELECT
