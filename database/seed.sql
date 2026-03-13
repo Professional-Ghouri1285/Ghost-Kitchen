@@ -1,8 +1,25 @@
 TRUNCATE TABLE Payouts, Deliveries, OrderItems, Orders,
               MenuItems, BrandInventoryAllocation,
               Inventory, VirtualBrands, KitchenHubs,
-              Couriers
+              Couriers, Users
 CASCADE;
+
+INSERT INTO Users (user_id, username, password_hash, role) VALUES
+(1,  'admin1',   '$2b$10$YdNIhUB/D0cFgrREF2iRZO/Ao62E4Rg.dYEm7zJhnhGMUiimnhpDu', 'admin'),
+(2,  'kitchen1', '$2b$10$d6.r/VPYCqSRKoEWMQURS.lmsHXQTuPZF8eFX5kbzPprmWcOlyH5W', 'kitchen_staff'),
+(3,  'kitchen2', '$2b$10$IJsq3BuMgJvy5XfcRD2nEeRniDUYmJbtcfbvzsy1oAOU4VB3KssRS', 'kitchen_staff'),
+(4,  'ali',      '$2b$10$QsdhYBI3Pg2KQ22TPI8X3eC3koPAM0JpddXdeDc6Z1dAt3sTSdbmW', 'courier'),
+(5,  'ahmed',    '$2b$10$tkLSOvWp3PFxHEGUP4d/Tu1a/tDxaiJ1KFuDw.8yPCWR0r6mdFnca', 'courier'),
+(6,  'sara',     '$2b$10$qkuryVRyecEbnnDkxXCpGORigrFkJK4ZthI3RXvxrLdeBpKrfSTzy', 'courier'),
+(7,  'usman',    '$2b$10$Y0DgNyC8JinnHPJjdg3d5eQQf7gfg7CQhwrbwmCBVZ0LaafidLCse', 'courier'),
+(8,  'fatima',   '$2b$10$nIfocXrwZ92ggcf4eFGrgeSiZnq85Fdy4nZ2wfksVt0ucOwhFY5FG', 'courier'),
+(9,  'hassan',   '$2b$10$F3KwzOazHYXq779KoI9xU..PpJ3bjW8NoaDl6lL4EeU5eauSKew5W', 'courier'),
+(10, 'zainab',   '$2b$10$QDMBXT/4Bhk9DxIe5ghZLOPVTIVeSh0bycsUXX4Jv.OU7djrE8lrC', 'courier'),
+(11, 'bilal',    '$2b$10$3uN1Lr/aIwsyGLoeSluvsO3SpbnpAXf55pzpt6Kaq6yF.7fW6PhgK', 'courier'),
+(12, 'ayesha',   '$2b$10$q.Bz4kyudNg8BhFIn2PEG.dZuljIxPOcB7jevYm4vA5UbQbPheDNm', 'courier'),
+(13, 'kamran',   '$2b$10$ed6UH27TgfZ7.XjZzJA4Qul25JFD2EcBNxdhGKxnwTgJHGL.kaQ6q', 'courier');
+
+SELECT setval('users_user_id_seq', 13);
 
 INSERT INTO KitchenHubs (hub_id, name, location, status) VALUES
 (1, 'Central Ghost Kitchen', 'Downtown', 'ACTIVE');
@@ -58,17 +75,17 @@ INSERT INTO MenuItems (item_id, brand_id, name, price, is_available) VALUES
 (16, 5, 'Cheese Fries',          450, TRUE),
 (17, 5, 'Spicy Fries',           380, TRUE);
 
-INSERT INTO Couriers (courier_id, name, status, rating) VALUES
-(1,  'Ali',     'AVAILABLE', 4.8),
-(2,  'Ahmed',   'AVAILABLE', 4.5),
-(3,  'Sara',    'BUSY',      4.9),
-(4,  'Usman',   'AVAILABLE', 4.2),
-(5,  'Fatima',  'AVAILABLE', 4.7),
-(6,  'Hassan',  'BUSY',      4.3),
-(7,  'Zainab',  'AVAILABLE', 4.6),
-(8,  'Bilal',   'AVAILABLE', 4.1),
-(9,  'Ayesha',  'BUSY',      4.9),
-(10, 'Kamran',  'AVAILABLE', 4.4);
+INSERT INTO Couriers (courier_id, user_id, name, status, rating) VALUES
+(1,  4,  'Ali',     'AVAILABLE', 4.8),
+(2,  5,  'Ahmed',   'AVAILABLE', 4.5),
+(3,  6,  'Sara',    'BUSY',      4.9),
+(4,  7,  'Usman',   'AVAILABLE', 4.2),
+(5,  8,  'Fatima',  'AVAILABLE', 4.7),
+(6,  9,  'Hassan',  'BUSY',      4.3),
+(7,  10, 'Zainab',  'AVAILABLE', 4.6),
+(8,  11, 'Bilal',   'AVAILABLE', 4.1),
+(9,  12, 'Ayesha',  'BUSY',      4.9),
+(10, 13, 'Kamran',  'AVAILABLE', 4.4);
 
 INSERT INTO Orders (order_id, brand_id, order_status, created_at) VALUES
 (1,  1, 'DELIVERED', NOW() - INTERVAL '30 days'),
@@ -218,13 +235,12 @@ INSERT INTO Payouts (payout_id, courier_id, amount, payout_date) VALUES
 (29, 9,  525, NOW()),
 (30, 10, 475, NOW());
 
-SELECT 'KitchenHubs'             AS tbl, COUNT(*) AS rows FROM KitchenHubs             UNION ALL
-SELECT 'VirtualBrands',                  COUNT(*)         FROM VirtualBrands            UNION ALL
-SELECT 'Inventory',                      COUNT(*)         FROM Inventory                UNION ALL
-SELECT 'BrandInventoryAllocation',       COUNT(*)         FROM BrandInventoryAllocation UNION ALL
-SELECT 'MenuItems',                      COUNT(*)         FROM MenuItems                UNION ALL
-SELECT 'Couriers',                       COUNT(*)         FROM Couriers                 UNION ALL
-SELECT 'Orders',                         COUNT(*)         FROM Orders                   UNION ALL
-SELECT 'OrderItems',                     COUNT(*)         FROM OrderItems               UNION ALL
-SELECT 'Deliveries',                     COUNT(*)         FROM Deliveries               UNION ALL
-SELECT 'Payouts',                        COUNT(*)         FROM Payouts;
+SELECT setval('kitchenhubs_hub_id_seq', 1);
+SELECT setval('virtualbrands_brand_id_seq', 5);
+SELECT setval('inventory_ingredient_id_seq', 10);
+SELECT setval('menuitems_item_id_seq', 18);
+SELECT setval('couriers_courier_id_seq', 10);
+SELECT setval('orders_order_id_seq', 40);
+SELECT setval('orderitems_order_item_id_seq', (SELECT COUNT(*) FROM OrderItems));
+SELECT setval('deliveries_delivery_id_seq', 30);
+SELECT setval('payouts_payout_id_seq', 30);
