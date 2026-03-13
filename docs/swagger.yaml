@@ -1,0 +1,2003 @@
+openapi: 3.0.3
+info:
+  title: Ghost Kitchen API
+  description: |
+    REST API for a Ghost Kitchen management platform.
+    Manages kitchen hubs, virtual brands, shared inventory with percentage-based
+    allocation, menu items, orders (with transactional inventory deduction),
+    couriers, deliveries (with transactional payout processing), and reporting.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Local development server
+
+tags:
+  - name: Auth
+    description: Registration and login (no token required)
+  - name: Kitchen Hubs
+    description: Physical kitchen locations (Admin only)
+  - name: Virtual Brands
+    description: Brand entities operating within hubs (Admin only)
+  - name: Inventory
+    description: Shared ingredient inventory (Admin + Kitchen Staff)
+  - name: Allocations
+    description: Brand-to-ingredient allocation percentages (Admin write, Admin + Kitchen Staff read)
+  - name: Menu Items
+    description: Menu items belonging to brands (Admin + Kitchen Staff CRUD, Admin only delete)
+  - name: Orders
+    description: Order placement and management (Admin all, Kitchen Staff read)
+  - name: Couriers
+    description: Courier profiles (Admin all, Courier own only)
+  - name: Deliveries
+    description: Delivery assignment and completion (Admin all, Courier own)
+  - name: Payouts
+    description: Courier payout records (Admin all, Courier /my)
+  - name: Reports
+    description: Aggregated reporting views (Admin only)
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from POST /auth/login
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+      example:
+        error: "Something went wrong"
+
+    # ---------- Auth ----------
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+      example:
+        username: admin1
+        password: secret123
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          type: object
+          properties:
+            user_id:
+              type: integer
+            username:
+              type: string
+            role:
+              type: string
+              enum: [admin, kitchen_staff, courier]
+      example:
+        token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        user:
+          user_id: 1
+          username: admin1
+          role: admin
+
+    RegisterRequest:
+      type: object
+      required: [username, password, role]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+        role:
+          type: string
+          enum: [admin, kitchen_staff, courier]
+      example:
+        username: newuser
+        password: pass1234
+        role: kitchen_staff
+
+    User:
+      type: object
+      properties:
+        user_id:
+          type: integer
+        username:
+          type: string
+        role:
+          type: string
+          enum: [admin, kitchen_staff, courier]
+        created_at:
+          type: string
+          format: date-time
+      example:
+        user_id: 2
+        username: newuser
+        role: kitchen_staff
+        created_at: "2025-01-15T10:30:00.000Z"
+
+    # ---------- Kitchen Hubs ----------
+    HubInput:
+      type: object
+      required: [name, location, status]
+      properties:
+        name:
+          type: string
+        location:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+      example:
+        name: Downtown Hub
+        location: "123 Main St, Istanbul"
+        status: ACTIVE
+
+    Hub:
+      type: object
+      properties:
+        hub_id:
+          type: integer
+        name:
+          type: string
+        location:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+      example:
+        hub_id: 1
+        name: Downtown Hub
+        location: "123 Main St, Istanbul"
+        status: ACTIVE
+
+    # ---------- Virtual Brands ----------
+    BrandInput:
+      type: object
+      required: [hub_id, name]
+      properties:
+        hub_id:
+          type: integer
+        name:
+          type: string
+        active_status:
+          type: boolean
+          default: true
+      example:
+        hub_id: 1
+        name: Burger Palace
+        active_status: true
+
+    Brand:
+      type: object
+      properties:
+        brand_id:
+          type: integer
+        hub_id:
+          type: integer
+        name:
+          type: string
+        active_status:
+          type: boolean
+        hub_name:
+          type: string
+      example:
+        brand_id: 1
+        hub_id: 1
+        name: Burger Palace
+        active_status: true
+        hub_name: Downtown Hub
+
+    # ---------- Inventory ----------
+    InventoryInput:
+      type: object
+      required: [name, total_quantity, unit]
+      properties:
+        name:
+          type: string
+        total_quantity:
+          type: integer
+          minimum: 0
+        unit:
+          type: string
+      example:
+        name: Flour
+        total_quantity: 500
+        unit: kg
+
+    InventoryItem:
+      type: object
+      properties:
+        ingredient_id:
+          type: integer
+        name:
+          type: string
+        total_quantity:
+          type: integer
+        unit:
+          type: string
+      example:
+        ingredient_id: 1
+        name: Flour
+        total_quantity: 500
+        unit: kg
+
+    # ---------- Allocations ----------
+    AllocationInput:
+      type: object
+      required: [brand_id, ingredient_id, allocation_percentage]
+      properties:
+        brand_id:
+          type: integer
+        ingredient_id:
+          type: integer
+        allocation_percentage:
+          type: number
+          format: decimal
+          minimum: 0.01
+          maximum: 100
+      example:
+        brand_id: 1
+        ingredient_id: 1
+        allocation_percentage: 40.00
+
+    AllocationUpdateInput:
+      type: object
+      required: [allocation_percentage]
+      properties:
+        allocation_percentage:
+          type: number
+          format: decimal
+          minimum: 0.01
+          maximum: 100
+      example:
+        allocation_percentage: 55.00
+
+    Allocation:
+      type: object
+      properties:
+        brand_id:
+          type: integer
+        ingredient_id:
+          type: integer
+        allocation_percentage:
+          type: number
+          format: decimal
+        brand_name:
+          type: string
+        ingredient_name:
+          type: string
+      example:
+        brand_id: 1
+        ingredient_id: 1
+        allocation_percentage: 40.00
+        brand_name: Burger Palace
+        ingredient_name: Flour
+
+    # ---------- Menu Items ----------
+    MenuItemInput:
+      type: object
+      required: [brand_id, name, price]
+      properties:
+        brand_id:
+          type: integer
+        name:
+          type: string
+        price:
+          type: number
+          format: decimal
+          minimum: 0.01
+        is_available:
+          type: boolean
+          default: true
+      example:
+        brand_id: 1
+        name: Classic Burger
+        price: 12.99
+        is_available: true
+
+    MenuItem:
+      type: object
+      properties:
+        item_id:
+          type: integer
+        brand_id:
+          type: integer
+        name:
+          type: string
+        price:
+          type: number
+          format: decimal
+        is_available:
+          type: boolean
+        brand_name:
+          type: string
+      example:
+        item_id: 1
+        brand_id: 1
+        name: Classic Burger
+        price: 12.99
+        is_available: true
+        brand_name: Burger Palace
+
+    # ---------- Orders ----------
+    OrderInput:
+      type: object
+      required: [brand_id, items]
+      properties:
+        brand_id:
+          type: integer
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [item_id, quantity]
+            properties:
+              item_id:
+                type: integer
+              quantity:
+                type: integer
+                minimum: 1
+      example:
+        brand_id: 1
+        items:
+          - item_id: 1
+            quantity: 2
+          - item_id: 3
+            quantity: 1
+
+    Order:
+      type: object
+      properties:
+        order_id:
+          type: integer
+        brand_id:
+          type: integer
+        order_status:
+          type: string
+          enum: [PLACED, CANCELLED, DELIVERED]
+        created_at:
+          type: string
+          format: date-time
+        brand_name:
+          type: string
+      example:
+        order_id: 1
+        brand_id: 1
+        order_status: PLACED
+        created_at: "2025-01-15T14:00:00.000Z"
+        brand_name: Burger Palace
+
+    OrderDetail:
+      allOf:
+        - $ref: '#/components/schemas/Order'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  order_item_id:
+                    type: integer
+                  order_id:
+                    type: integer
+                  item_id:
+                    type: integer
+                  quantity:
+                    type: integer
+                  item_name:
+                    type: string
+                  price:
+                    type: number
+                    format: decimal
+      example:
+        order_id: 1
+        brand_id: 1
+        order_status: PLACED
+        created_at: "2025-01-15T14:00:00.000Z"
+        brand_name: Burger Palace
+        items:
+          - order_item_id: 1
+            order_id: 1
+            item_id: 1
+            quantity: 2
+            item_name: Classic Burger
+            price: 12.99
+          - order_item_id: 2
+            order_id: 1
+            item_id: 3
+            quantity: 1
+            item_name: Fries
+            price: 4.99
+
+    # ---------- Couriers ----------
+    CourierInput:
+      type: object
+      required: [name]
+      properties:
+        user_id:
+          type: integer
+          nullable: true
+        name:
+          type: string
+        status:
+          type: string
+          enum: [AVAILABLE, BUSY]
+          default: AVAILABLE
+        rating:
+          type: number
+          format: decimal
+          minimum: 0
+          maximum: 5
+          nullable: true
+      example:
+        user_id: 3
+        name: Ali Courier
+        status: AVAILABLE
+        rating: 4.5
+
+    CourierUpdateInput:
+      type: object
+      required: [name, status]
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum: [AVAILABLE, BUSY]
+        rating:
+          type: number
+          format: decimal
+          minimum: 0
+          maximum: 5
+          nullable: true
+      example:
+        name: Ali Courier
+        status: BUSY
+        rating: 4.7
+
+    Courier:
+      type: object
+      properties:
+        courier_id:
+          type: integer
+        user_id:
+          type: integer
+          nullable: true
+        name:
+          type: string
+        status:
+          type: string
+          enum: [AVAILABLE, BUSY]
+        rating:
+          type: number
+          format: decimal
+          nullable: true
+        username:
+          type: string
+          nullable: true
+      example:
+        courier_id: 1
+        user_id: 3
+        name: Ali Courier
+        status: AVAILABLE
+        rating: 4.5
+        username: ali_c
+
+    # ---------- Deliveries ----------
+    DeliveryInput:
+      type: object
+      required: [order_id, courier_id]
+      properties:
+        order_id:
+          type: integer
+        courier_id:
+          type: integer
+      example:
+        order_id: 1
+        courier_id: 1
+
+    Delivery:
+      type: object
+      properties:
+        delivery_id:
+          type: integer
+        order_id:
+          type: integer
+        courier_id:
+          type: integer
+        delivery_status:
+          type: string
+          enum: [ASSIGNED, PICKED, COMPLETED]
+        courier_name:
+          type: string
+        order_status:
+          type: string
+        brand_id:
+          type: integer
+      example:
+        delivery_id: 1
+        order_id: 1
+        courier_id: 1
+        delivery_status: ASSIGNED
+        courier_name: Ali Courier
+        order_status: PLACED
+        brand_id: 1
+
+    DeliveryCompleteResponse:
+      type: object
+      properties:
+        delivery_id:
+          type: integer
+        status:
+          type: string
+        payout:
+          type: string
+          description: Payout amount as a decimal string (15% of order total)
+      example:
+        delivery_id: 1
+        status: COMPLETED
+        payout: "4.65"
+
+    # ---------- Payouts ----------
+    Payout:
+      type: object
+      properties:
+        payout_id:
+          type: integer
+        courier_id:
+          type: integer
+        amount:
+          type: number
+          format: decimal
+        payout_date:
+          type: string
+          format: date
+        courier_name:
+          type: string
+      example:
+        payout_id: 1
+        courier_id: 1
+        amount: 4.65
+        payout_date: "2025-01-15"
+        courier_name: Ali Courier
+
+    # ---------- Reports ----------
+    BrandSalesReport:
+      type: object
+      properties:
+        brand_id:
+          type: integer
+        brand_name:
+          type: string
+        total_revenue:
+          type: number
+          format: decimal
+      example:
+        brand_id: 1
+        brand_name: Burger Palace
+        total_revenue: 245.80
+
+    InventoryUsageReport:
+      type: object
+      properties:
+        brand_name:
+          type: string
+        ingredient_name:
+          type: string
+        allocation_percentage:
+          type: number
+          format: decimal
+        max_allowed_quantity:
+          type: number
+          format: decimal
+      example:
+        brand_name: Burger Palace
+        ingredient_name: Flour
+        allocation_percentage: 40.00
+        max_allowed_quantity: 200.00
+
+    CourierPerformanceReport:
+      type: object
+      properties:
+        courier_id:
+          type: integer
+        courier_name:
+          type: string
+        completed_deliveries:
+          type: integer
+        total_payout:
+          type: number
+          format: decimal
+      example:
+        courier_id: 1
+        courier_name: Ali Courier
+        completed_deliveries: 12
+        total_payout: 55.80
+
+  responses:
+    BadRequest:
+      description: Invalid or missing request data
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Missing required fields"
+    Unauthorized:
+      description: Missing or invalid JWT token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Token missing or invalid"
+    Forbidden:
+      description: Insufficient role permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Forbidden"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Resource not found"
+    Conflict:
+      description: Duplicate or conflicting resource
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Resource already exists"
+    InternalError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Internal server error"
+
+# ──────────────────────────────────────────────────────────────
+#  PATHS
+# ──────────────────────────────────────────────────────────────
+paths:
+
+  # ==================== Auth ====================
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in and receive a JWT token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Invalid credentials"
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Username already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Username already exists"
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ==================== Kitchen Hubs ====================
+  /hubs:
+    get:
+      tags: [Kitchen Hubs]
+      summary: List all kitchen hubs
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Array of hubs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Hub'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [Kitchen Hubs]
+      summary: Create a new kitchen hub
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HubInput'
+      responses:
+        '201':
+          description: Hub created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Hub'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /hubs/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Hub ID
+
+    get:
+      tags: [Kitchen Hubs]
+      summary: Get a kitchen hub by ID
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Hub object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Hub'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags: [Kitchen Hubs]
+      summary: Update a kitchen hub
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HubInput'
+      responses:
+        '200':
+          description: Hub updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Hub'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags: [Kitchen Hubs]
+      summary: Delete a kitchen hub
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Hub deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Hub'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ==================== Virtual Brands ====================
+  /brands:
+    get:
+      tags: [Virtual Brands]
+      summary: List all virtual brands (includes hub_name)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Array of brands with joined hub_name
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Brand'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [Virtual Brands]
+      summary: Create a new virtual brand
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BrandInput'
+      responses:
+        '201':
+          description: Brand created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Brand'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Brand name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Brand name already exists"
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /brands/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Brand ID
+
+    get:
+      tags: [Virtual Brands]
+      summary: Get a virtual brand by ID
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Brand object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Brand'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags: [Virtual Brands]
+      summary: Update a virtual brand
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BrandInput'
+      responses:
+        '200':
+          description: Brand updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Brand'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags: [Virtual Brands]
+      summary: Delete a virtual brand
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Brand deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Brand'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ==================== Inventory ====================
+  /inventory:
+    get:
+      tags: [Inventory]
+      summary: List all inventory ingredients
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Array of inventory items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InventoryItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [Inventory]
+      summary: Add a new ingredient to inventory
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryInput'
+      responses:
+        '201':
+          description: Ingredient created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Ingredient name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Ingredient name already exists"
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /inventory/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Ingredient ID
+
+    get:
+      tags: [Inventory]
+      summary: Get an ingredient by ID
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Inventory item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags: [Inventory]
+      summary: Update an ingredient
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryInput'
+      responses:
+        '200':
+          description: Ingredient updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags: [Inventory]
+      summary: Delete an ingredient (Admin only)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Ingredient deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ==================== Allocations ====================
+  /allocations:
+    get:
+      tags: [Allocations]
+      summary: List all brand-ingredient allocations
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Array of allocations with joined brand_name and ingredient_name
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Allocation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [Allocations]
+      summary: Create a new allocation (Admin only)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AllocationInput'
+      responses:
+        '201':
+          description: Allocation created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Allocation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Allocation for this brand-ingredient pair already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Allocation already exists for this brand-ingredient pair"
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /allocations/{brandId}/{ingredientId}:
+    parameters:
+      - name: brandId
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Brand ID
+      - name: ingredientId
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Ingredient ID
+
+    get:
+      tags: [Allocations]
+      summary: Get a specific allocation by composite key
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Allocation object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Allocation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags: [Allocations]
+      summary: Update an allocation percentage (Admin only)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AllocationUpdateInput'
+      responses:
+        '200':
+          description: Allocation updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Allocation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags: [Allocations]
+      summary: Remove an allocation (Admin only)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Allocation deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Allocation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ==================== Menu Items ====================
+  /menu-items:
+    get:
+      tags: [Menu Items]
+      summary: List all menu items
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Array of menu items with brand_name
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MenuItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [Menu Items]
+      summary: Create a new menu item
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MenuItemInput'
+      responses:
+        '201':
+          description: Menu item created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MenuItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /menu-items/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Menu item ID
+
+    get:
+      tags: [Menu Items]
+      summary: Get a menu item by ID
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Menu item object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MenuItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags: [Menu Items]
+      summary: Update a menu item
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MenuItemInput'
+      responses:
+        '200':
+          description: Menu item updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MenuItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags: [Menu Items]
+      summary: Delete a menu item (Admin only)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Menu item deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MenuItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ==================== Orders ====================
+  /orders:
+    get:
+      tags: [Orders]
+      summary: List all orders (Admin + Kitchen Staff)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Array of orders with brand_name
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [Orders]
+      summary: Place a new order (transactional - deducts inventory)
+      description: |
+        Creates an order and its line items inside a database transaction.
+        For each item the trigger `check_brand_inventory_allocation` validates
+        that the brand has not exceeded its allocated share of the ingredient.
+        Inventory quantities are deducted atomically; the entire operation
+        rolls back on failure.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderInput'
+      responses:
+        '201':
+          description: Order placed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          description: Validation error or insufficient inventory
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                missingFields:
+                  summary: Missing required fields
+                  value:
+                    error: "brand_id and items array are required"
+                insufficientInventory:
+                  summary: Not enough inventory
+                  value:
+                    error: "Insufficient inventory for item 1"
+                allocationExceeded:
+                  summary: Brand allocation limit exceeded
+                  value:
+                    error: "Brand inventory allocation exceeded"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /orders/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Order ID
+
+    get:
+      tags: [Orders]
+      summary: Get order by ID (includes items array)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Order with nested items
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /orders/{id}/cancel:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Order ID
+
+    patch:
+      tags: [Orders]
+      summary: Cancel an order (Admin only)
+      description: |
+        Sets order_status to CANCELLED. The database trigger
+        `enforce_order_status_transition` prevents cancelling orders
+        that are already DELIVERED or CANCELLED.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Order cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          description: Invalid state transition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Cannot modify order once it is DELIVERED or CANCELLED"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ==================== Couriers ====================
+  /couriers:
+    get:
+      tags: [Couriers]
+      summary: List all couriers
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Array of couriers with username
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Courier'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [Couriers]
+      summary: Create a new courier profile
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CourierInput'
+      responses:
+        '201':
+          description: Courier created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Courier'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: user_id already linked to another courier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "user_id already assigned to a courier"
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /couriers/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Courier ID
+
+    get:
+      tags: [Couriers]
+      summary: Get a courier by ID
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Courier object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Courier'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags: [Couriers]
+      summary: Update a courier
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CourierUpdateInput'
+      responses:
+        '200':
+          description: Courier updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Courier'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags: [Couriers]
+      summary: Delete a courier (Admin only)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Courier deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Courier'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ==================== Deliveries ====================
+  /deliveries:
+    get:
+      tags: [Deliveries]
+      summary: List deliveries (Admin sees all, Courier sees own)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Array of deliveries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Delivery'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [Deliveries]
+      summary: Assign a delivery to a courier (Admin only)
+      description: |
+        Creates a delivery record with status ASSIGNED and sets the
+        courier's status to BUSY inside a transaction.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeliveryInput'
+      responses:
+        '201':
+          description: Delivery assigned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Delivery'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Delivery already assigned for this order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Delivery already assigned for this order"
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /deliveries/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Delivery ID
+
+    get:
+      tags: [Deliveries]
+      summary: Get a delivery by ID
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Delivery object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Delivery'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Courier can only view own deliveries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Can only view your own deliveries"
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /deliveries/{id}/complete:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Delivery ID
+
+    patch:
+      tags: [Deliveries]
+      summary: Complete a delivery (transactional - creates payout)
+      description: |
+        Runs inside a database transaction:
+        1. Sets delivery_status to COMPLETED
+        2. Sets order_status to DELIVERED (validated by trigger)
+        3. Sets courier status back to AVAILABLE
+        4. Calculates payout as 15% of the order total and inserts a Payouts row
+        Rolls back entirely on any failure.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Delivery completed with payout info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryCompleteResponse'
+        '400':
+          description: Invalid state or not authorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                alreadyCompleted:
+                  summary: Delivery already completed
+                  value:
+                    error: "Delivery already completed"
+                notFound:
+                  summary: Delivery not found
+                  value:
+                    error: "Delivery not found"
+                notAuthorized:
+                  summary: Courier can only complete own delivery
+                  value:
+                    error: "Not authorized to complete this delivery"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ==================== Payouts ====================
+  /payouts:
+    get:
+      tags: [Payouts]
+      summary: List all payouts (Admin only)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Array of payouts with courier_name
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Payout'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /payouts/my:
+    get:
+      tags: [Payouts]
+      summary: Get own payouts (Courier only)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Array of the authenticated courier's payouts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Payout'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /payouts/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Payout ID
+
+    get:
+      tags: [Payouts]
+      summary: Get a payout by ID (Admin only)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Payout object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payout'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ==================== Reports ====================
+  /reports/brand-sales:
+    get:
+      tags: [Reports]
+      summary: Brand sales summary (Admin only)
+      description: Returns aggregated revenue per brand from delivered orders.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Array of brand sales rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BrandSalesReport'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /reports/inventory-usage:
+    get:
+      tags: [Reports]
+      summary: Inventory allocation usage (Admin only)
+      description: |
+        Returns each brand-ingredient allocation with the computed
+        max_allowed_quantity (total_quantity * allocation_percentage / 100).
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Array of inventory usage rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InventoryUsageReport'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /reports/courier-performance:
+    get:
+      tags: [Reports]
+      summary: Courier performance summary (Admin only)
+      description: Returns completed delivery counts and total payouts per courier.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Array of courier performance rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CourierPerformanceReport'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
