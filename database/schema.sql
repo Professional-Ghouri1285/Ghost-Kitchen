@@ -1,3 +1,29 @@
+DROP VIEW IF EXISTS courier_performance_summary;
+DROP VIEW IF EXISTS inventory_allocation_usage;
+DROP VIEW IF EXISTS brand_sales_summary;
+DROP TRIGGER IF EXISTS trg_enforce_order_status_transition ON Orders;
+DROP TRIGGER IF EXISTS trg_check_brand_inventory_allocation ON OrderItems;
+DROP FUNCTION IF EXISTS enforce_order_status_transition();
+DROP FUNCTION IF EXISTS check_brand_inventory_allocation();
+DROP TABLE IF EXISTS Payouts CASCADE;
+DROP TABLE IF EXISTS Deliveries CASCADE;
+DROP TABLE IF EXISTS Couriers CASCADE;
+DROP TABLE IF EXISTS OrderItems CASCADE;
+DROP TABLE IF EXISTS Orders CASCADE;
+DROP TABLE IF EXISTS MenuItems CASCADE;
+DROP TABLE IF EXISTS BrandInventoryAllocation CASCADE;
+DROP TABLE IF EXISTS Inventory CASCADE;
+DROP TABLE IF EXISTS VirtualBrands CASCADE;
+DROP TABLE IF EXISTS KitchenHubs CASCADE;
+DROP TABLE IF EXISTS Users CASCADE;
+
+CREATE TABLE Users (
+    user_id SERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'kitchen_staff', 'courier')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 CREATE TABLE KitchenHubs (
     hub_id SERIAL PRIMARY KEY,
@@ -81,11 +107,16 @@ CREATE TABLE OrderItems (
 
 CREATE TABLE Couriers (
     courier_id SERIAL PRIMARY KEY,
+    user_id INT UNIQUE,
     name VARCHAR(100) NOT NULL,
     status VARCHAR(20) NOT NULL
         CHECK (status IN ('AVAILABLE','BUSY')),
     rating DECIMAL(2,1)
-        CHECK (rating BETWEEN 0 AND 5)
+        CHECK (rating BETWEEN 0 AND 5),
+    CONSTRAINT fk_couriers_user
+        FOREIGN KEY (user_id)
+        REFERENCES Users(user_id)
+        ON DELETE SET NULL
 );
 
 CREATE TABLE Deliveries (
@@ -147,8 +178,9 @@ BEGIN
         FROM MenuItems
         WHERE item_id = NEW.item_id
     )
+    ORDER BY bia.ingredient_id
     LIMIT 1;
-    
+
     IF brand_used + NEW.quantity > max_allowed THEN
         RAISE EXCEPTION 'Brand inventory allocation exceeded';
     END IF;
@@ -218,4 +250,3 @@ LEFT JOIN Deliveries d
 LEFT JOIN Payouts p
     ON c.courier_id = p.courier_id
 GROUP BY c.courier_id, c.name;
-
