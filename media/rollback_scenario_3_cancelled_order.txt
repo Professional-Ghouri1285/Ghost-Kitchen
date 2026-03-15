@@ -1,0 +1,71 @@
+TRANSACTION ROLLBACK LOG — Scenario 3
+Attempting Delivery Completion on a Cancelled Order
+Date: 2026-03-01T06:09:58.134Z
+
+DESCRIPTION:
+We first place an order, assign a delivery, then cancel the order.
+When we attempt to complete the delivery, the trigger
+trg_enforce_order_status_transition should reject changing a
+CANCELLED order to DELIVERED, causing ROLLBACK.
+
+======================================================================
+STEP 1 — Place a test order
+======================================================================
+{
+  "http_status": 201,
+  "response": {
+    "order_id": 42,
+    "brand_id": 1,
+    "order_status": "PLACED",
+    "created_at": "2026-03-01T06:09:58.136Z"
+  }
+}
+
+======================================================================
+STEP 2 — Assign delivery to courier 1
+======================================================================
+{
+  "http_status": 201,
+  "response": {
+    "delivery_id": 31,
+    "order_id": 42,
+    "courier_id": 1,
+    "delivery_status": "ASSIGNED"
+  }
+}
+
+======================================================================
+STEP 3 — Cancel the order
+======================================================================
+{
+  "http_status": 200,
+  "response": {
+    "order_id": 42,
+    "brand_id": 1,
+    "order_status": "CANCELLED",
+    "created_at": "2026-03-01T06:09:58.136Z"
+  }
+}
+
+======================================================================
+STEP 4 — PATCH /deliveries/31/complete — EXPECTED FAILURE
+======================================================================
+{
+  "http_status": 400,
+  "response": {
+    "error": "Cannot modify order once it is DELIVERED or CANCELLED"
+  }
+}
+
+======================================================================
+STEP 5 — Order status AFTER failed completion (should still be CANCELLED)
+======================================================================
+{
+  "order_status": "CANCELLED"
+}
+
+CONCLUSION:
+The trigger trg_enforce_order_status_transition rejected the
+CANCELLED → DELIVERED transition. The entire transaction rolled back:
+delivery stays as-is, courier status unchanged, no payout created.
+This confirms ATOMICITY and CONSISTENCY.

@@ -1,0 +1,156 @@
+TRANSACTION ROLLBACK LOG — Scenario 1
+Order Placement with Inventory Allocation Exceeded
+Date: 2026-03-01T06:09:58.113Z
+
+DESCRIPTION:
+We attempt to place an order with a very large quantity that exceeds
+the brand's allocated share of inventory. The database trigger
+trg_check_brand_inventory_allocation should reject the INSERT,
+causing the entire transaction to ROLLBACK.
+
+======================================================================
+STEP 1 — Inventory BEFORE the order attempt
+======================================================================
+[
+  {
+    "ingredient_id": 1,
+    "name": "Buns",
+    "total_quantity": 500,
+    "unit": "pcs"
+  },
+  {
+    "ingredient_id": 2,
+    "name": "Beef Patty",
+    "total_quantity": 300,
+    "unit": "pcs"
+  },
+  {
+    "ingredient_id": 3,
+    "name": "Chicken",
+    "total_quantity": 400,
+    "unit": "kg"
+  },
+  {
+    "ingredient_id": 4,
+    "name": "Cheese",
+    "total_quantity": 350,
+    "unit": "kg"
+  },
+  {
+    "ingredient_id": 5,
+    "name": "Rice",
+    "total_quantity": 600,
+    "unit": "kg"
+  },
+  {
+    "ingredient_id": 6,
+    "name": "Pasta",
+    "total_quantity": 450,
+    "unit": "kg"
+  },
+  {
+    "ingredient_id": 7,
+    "name": "Tomato Sauce",
+    "total_quantity": 300,
+    "unit": "liters"
+  },
+  {
+    "ingredient_id": 8,
+    "name": "Oil",
+    "total_quantity": 500,
+    "unit": "liters"
+  },
+  {
+    "ingredient_id": 9,
+    "name": "Spices",
+    "total_quantity": 200,
+    "unit": "kg"
+  },
+  {
+    "ingredient_id": 10,
+    "name": "Vegetables",
+    "total_quantity": 400,
+    "unit": "kg"
+  }
+]
+
+======================================================================
+STEP 2 — POST /orders (quantity: 99999) — EXPECTED FAILURE
+======================================================================
+{
+  "http_status": 400,
+  "response": {
+    "error": "Brand inventory allocation exceeded"
+  }
+}
+
+======================================================================
+STEP 3 — Inventory AFTER the failed order (should be UNCHANGED)
+======================================================================
+[
+  {
+    "ingredient_id": 1,
+    "name": "Buns",
+    "total_quantity": 500,
+    "unit": "pcs"
+  },
+  {
+    "ingredient_id": 2,
+    "name": "Beef Patty",
+    "total_quantity": 300,
+    "unit": "pcs"
+  },
+  {
+    "ingredient_id": 3,
+    "name": "Chicken",
+    "total_quantity": 400,
+    "unit": "kg"
+  },
+  {
+    "ingredient_id": 4,
+    "name": "Cheese",
+    "total_quantity": 350,
+    "unit": "kg"
+  },
+  {
+    "ingredient_id": 5,
+    "name": "Rice",
+    "total_quantity": 600,
+    "unit": "kg"
+  },
+  {
+    "ingredient_id": 6,
+    "name": "Pasta",
+    "total_quantity": 450,
+    "unit": "kg"
+  },
+  {
+    "ingredient_id": 7,
+    "name": "Tomato Sauce",
+    "total_quantity": 300,
+    "unit": "liters"
+  },
+  {
+    "ingredient_id": 8,
+    "name": "Oil",
+    "total_quantity": 500,
+    "unit": "liters"
+  },
+  {
+    "ingredient_id": 9,
+    "name": "Spices",
+    "total_quantity": 200,
+    "unit": "kg"
+  },
+  {
+    "ingredient_id": 10,
+    "name": "Vegetables",
+    "total_quantity": 400,
+    "unit": "kg"
+  }
+]
+
+CONCLUSION:
+The order was rejected and the transaction rolled back.
+Inventory quantities remain unchanged, confirming ATOMICITY.
+The trigger enforced brand allocation limits, confirming CONSISTENCY.

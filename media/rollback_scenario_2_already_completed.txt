@@ -1,0 +1,48 @@
+TRANSACTION ROLLBACK LOG — Scenario 2
+Attempting to Complete an Already-Completed Delivery
+Date: 2026-03-01T06:09:58.126Z
+
+DESCRIPTION:
+We attempt to complete delivery #1, which is already in COMPLETED
+status from the seed data. The completeDelivery() function should
+detect this and ROLLBACK the transaction.
+
+======================================================================
+STEP 1 — Delivery #1 BEFORE attempt (already COMPLETED)
+======================================================================
+{
+  "delivery_id": 1,
+  "order_id": 1,
+  "courier_id": 1,
+  "delivery_status": "COMPLETED",
+  "courier_name": "Ali",
+  "order_status": "DELIVERED",
+  "brand_id": 1
+}
+
+======================================================================
+STEP 2 — PATCH /deliveries/1/complete — EXPECTED FAILURE
+======================================================================
+{
+  "http_status": 400,
+  "response": {
+    "error": "Delivery already completed"
+  }
+}
+
+======================================================================
+STEP 3 — Delivery #1 AFTER attempt (should be unchanged)
+======================================================================
+{
+  "delivery_id": 1,
+  "order_id": 1,
+  "courier_id": 1,
+  "delivery_status": "COMPLETED",
+  "courier_name": "Ali",
+  "order_status": "DELIVERED",
+  "brand_id": 1
+}
+
+CONCLUSION:
+The completion was rejected because the delivery was already COMPLETED.
+No duplicate payout was created, confirming ATOMICITY and CONSISTENCY.
